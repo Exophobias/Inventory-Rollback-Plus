@@ -2,7 +2,8 @@ package com.nuclyon.technicallycoded.inventoryrollback.util.test;
 
 import com.nuclyon.technicallycoded.inventoryrollback.InventoryRollbackPlus;
 import com.nuclyon.technicallycoded.inventoryrollback.util.serialization.DeserializationResult;
-import com.nuclyon.technicallycoded.inventoryrollback.util.serialization.Version2Serialization;
+import com.nuclyon.technicallycoded.inventoryrollback.util.serialization.ItemStackSerialization;
+import me.danjono.inventoryrollback.InventoryRollback;
 import com.tcoded.lightlibs.bukkitversion.MCVersion;
 import org.bukkit.Material;
 import org.bukkit.block.ShulkerBox;
@@ -62,10 +63,10 @@ public class SelfTestSerialization {
             // Create a non-null item (requires a valid Bukkit Material environment)
             ItemStack original = new ItemStack(Material.DIRT, 10);
             ItemStack[] items = new ItemStack[]{original};
-            String serialized = Version2Serialization.serialize(items);
+            String serialized = ItemStackSerialization.serialize(items);
             TestAssertions.assertNotNull(serialized, "Serialized data should not be null");
 
-            DeserializationResult result = Version2Serialization.deserialize(serialized);
+            DeserializationResult result = ItemStackSerialization.deserializeData(InventoryRollback.getPackageVersion(), serialized);
             TestAssertions.assertNull(result.getErrorMessage(), "There should be no error during deserialization");
             TestAssertions.assertNotNull(result.getItems(), "The deserialized array should not be null");
             TestAssertions.assertEquals(1, result.getItems().length, "The deserialized array should have one item");
@@ -82,10 +83,10 @@ public class SelfTestSerialization {
     public static SelfTest buildTestSerializeAndDeserializeEmptyInventory() {
         Runnable test = () -> {
             ItemStack[] items = new ItemStack[0];
-            String serialized = Version2Serialization.serialize(items);
+            String serialized = ItemStackSerialization.serialize(items);
             TestAssertions.assertNotNull(serialized, "Serialized data should not be null");
 
-            DeserializationResult result = Version2Serialization.deserialize(serialized);
+            DeserializationResult result = ItemStackSerialization.deserializeData(InventoryRollback.getPackageVersion(), serialized);
             TestAssertions.assertNull(result.getErrorMessage(), "There should be no error during deserialization");
             TestAssertions.assertNotNull(result.getItems(), "The deserialized array should not be null");
             TestAssertions.assertEquals(0, result.getItems().length, "The deserialized array should be empty");
@@ -100,10 +101,10 @@ public class SelfTestSerialization {
             for (int i = 0; i < items.length; i++) {
                 items[i] = new ItemStack(Material.STONE, i + 1);
             }
-            String serialized = Version2Serialization.serialize(items);
+            String serialized = ItemStackSerialization.serialize(items);
             TestAssertions.assertNotNull(serialized, "Serialized data should not be null");
 
-            DeserializationResult result = Version2Serialization.deserialize(serialized);
+            DeserializationResult result = ItemStackSerialization.deserializeData(InventoryRollback.getPackageVersion(), serialized);
             TestAssertions.assertNull(result.getErrorMessage(), "There should be no error during deserialization");
             TestAssertions.assertNotNull(result.getItems(), "The deserialized array should not be null");
             TestAssertions.assertEquals(36, result.getItems().length, "The deserialized array should have 36 items");
@@ -145,12 +146,12 @@ public class SelfTestSerialization {
 
 
             ItemStack[] items = new ItemStack[]{shulkerBox};
-            String serialized = Version2Serialization.serialize(items);
+            String serialized = ItemStackSerialization.serialize(items);
             TestAssertions.assertNotNull(serialized, "Serialized data should not be null");
 
             logs.add("serialized = " + serialized);
 
-            DeserializationResult result = Version2Serialization.deserialize(serialized);
+            DeserializationResult result = ItemStackSerialization.deserializeData(InventoryRollback.getPackageVersion(), serialized);
             TestAssertions.assertNull(result.getErrorMessage(), "There should be no error during deserialization");
             TestAssertions.assertNotNull(result.getItems(), "The deserialized array should not be null");
             TestAssertions.assertEquals(1, result.getItems().length, "The deserialized array should have one item");
@@ -202,10 +203,10 @@ public class SelfTestSerialization {
             customItem.setItemMeta(itemMeta);
 
             ItemStack[] items = new ItemStack[]{customItem};
-            String serialized = Version2Serialization.serialize(items);
+            String serialized = ItemStackSerialization.serialize(items);
             TestAssertions.assertNotNull(serialized, "Serialized data should not be null");
 
-            DeserializationResult result = Version2Serialization.deserialize(serialized);
+            DeserializationResult result = ItemStackSerialization.deserializeData(InventoryRollback.getPackageVersion(), serialized);
             TestAssertions.assertNull(result.getErrorMessage(), "There should be no error during deserialization");
             TestAssertions.assertNotNull(result.getItems(), "The deserialized array should not be null");
             TestAssertions.assertEquals(1, result.getItems().length, "The deserialized array should have one item");
