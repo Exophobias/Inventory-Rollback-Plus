@@ -79,16 +79,21 @@ public class EventLogs implements Listener {
 
 	@EventHandler
 	private void playerQuit(PlayerQuitEvent e) {
-		if (!ConfigData.isEnabled()) return;
-
 		Player player = e.getPlayer();
+		UUID uuid = player.getUniqueId();
+
+		// Drop any pre-death snapshot the player left behind. It is only consumed by a death that
+		// follows the damage event, so a survived hit would otherwise keep it until their next death.
+		// Done before the enabled check on purpose: playerPreDeath has no such check, so it can still
+		// be filling this map while the plugin is toggled off.
+		this.inventoryCache.remove(uuid);
+
+		if (!ConfigData.isEnabled()) return;
 
 		if (player.hasPermission("inventoryrollbackplus.leavesave")) {
 			new SaveInventory(e.getPlayer(), LogType.QUIT, null, null)
 					.snapshotAndSave(player.getInventory(), player.getEnderChest(), true);
 		}
-
-		UUID uuid = player.getUniqueId();
 
 		// Run the cleanup 1 tick later in case the rate limiter should need to provide debug data.
 		// If the cleanup would run and the event is being spammed, this cleanup would delete the rate limiter's data
@@ -122,6 +127,13 @@ public class EventLogs implements Listener {
 
 		SaveInventory saveInventory = new SaveInventory(player, LogType.DEATH, event.getCause(), null);
 		SaveInventory.PlayerDataSnapshot snapshot = saveInventory.createSnapshot(player.getInventory(), player.getEnderChest());
+
+		// createSnapshot() returns null when there is nothing worth saving - an empty inventory with
+		// save-empty-inventories disabled. ConcurrentHashMap rejects null values, so guard before caching.
+		if (snapshot == null) {
+			this.inventoryCache.remove(uuid);
+			return;
+		}
 
 		this.inventoryCache.put(uuid, snapshot);
 	}

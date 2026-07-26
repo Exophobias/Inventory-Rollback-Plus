@@ -1,6 +1,7 @@
 package me.danjono.inventoryrollback.gui.menu;
 
 import com.nuclyon.technicallycoded.inventoryrollback.InventoryRollbackPlus;
+import com.nuclyon.technicallycoded.inventoryrollback.util.SyncExecutor;
 import com.tcoded.lightlibs.bukkitversion.MCVersion;
 import me.danjono.inventoryrollback.config.ConfigData;
 import me.danjono.inventoryrollback.config.MessageData;
@@ -14,9 +15,9 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitRunnable;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 
 public class MainInventoryBackupMenu {
 
@@ -60,8 +61,11 @@ public class MainInventoryBackupMenu {
 		this.buttons = new Buttons(playerUUID);
 
 		this.mainInvLen = mainInventory == null ? 0 : mainInventory.length;
-		
-		createInventory();
+
+		// The deserialisation above is why this menu is built off the main thread, but creating and
+		// filling the inventory itself is Bukkit API and belongs on it. Waiting also publishes the
+		// finished inventory back to this thread for showBackupItems().
+		SyncExecutor.runAndWait(this::createInventory);
 	}
 	
 	public void createInventory() {
@@ -152,45 +156,28 @@ public class MainInventoryBackupMenu {
 
 		item = 36;
 		position = 44;
-		
+
+		// Armor and off-hand go in the bottom row, right to left. Collect them first and place the
+		// lot in a single main-thread hop instead of blocking on callSyncMethod once per slot.
+		Map<Integer, ItemStack> extraSlots = new LinkedHashMap<>();
+
 		//Add armor
 		if (armor != null && armor.length > 0) {
-			try {
-				for (int i = 0; i < armor.length; i++) {
-					// Place item safely
-					final int finalPos = position;
-					final int finalItem = i;
-					Future<Void> placeItemFuture = main.getServer().getScheduler().callSyncMethod(main,
-							() -> {
-								inventory.setItem(finalPos, armor[finalItem]);
-								return null;
-							});
-					placeItemFuture.get();
-					position--;
-				}
-			} catch (ExecutionException | InterruptedException ex) {
-				ex.printStackTrace();
+			for (int i = 0; i < armor.length && position >= 0; i++) {
+				extraSlots.put(position, armor[i]);
+				position--;
 			}
 		} else {
-			try {
-				for (; item < mainInvLen; item++) {
-					if (mainInventory[item] != null) {
-						// Place item safely
-						final int finalPos = position;
-						final int finalItem = item;
-						Future<Void> placeItemFuture = main.getServer().getScheduler().callSyncMethod(main,
-								() -> {
-									inventory.setItem(finalPos, mainInventory[finalItem]);
-									return null;
-								});
-						placeItemFuture.get();
-						position--;
-					}
+			for (; item < mainInvLen && position >= 0; item++) {
+				if (mainInventory[item] != null) {
+					extraSlots.put(position, mainInventory[item]);
+					position--;
 				}
-			} catch (ExecutionException | InterruptedException ex) {
-				ex.printStackTrace();
 			}
 		}
+
+		if (!extraSlots.isEmpty())
+			SyncExecutor.run(() -> extraSlots.forEach(inventory::setItem));
 	}
 		
 }

@@ -16,6 +16,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.util.StringUtil;
 
 import java.util.*;
+import java.util.logging.Level;
 
 public class Commands extends ConfigData implements CommandExecutor, TabCompleter {
 
@@ -97,17 +98,27 @@ public class Commands extends ConfigData implements CommandExecutor, TabComplete
         if (args.length <= 0 || args.length == 1) {
             try {
                 openMainMenu(staff);
-            } catch (NullPointerException e) {}
+            } catch (NullPointerException e) {
+                reportMenuFailure(sender, e);
+            }
         } else if(args.length == 2) {
             @SuppressWarnings("deprecation")
             OfflinePlayer rollbackPlayer = Bukkit.getOfflinePlayer(args[1]);
 
             try {
                 openPlayerMenu(staff, rollbackPlayer);
-            } catch (NullPointerException e) {}
+            } catch (NullPointerException e) {
+                reportMenuFailure(sender, e);
+            }
         } else {
             sender.sendMessage(MessageData.getPluginPrefix() + MessageData.getError());
         }
+    }
+
+    /** The menu failed to build. Tell the sender instead of silently doing nothing, and leave a trace to debug from. */
+    private void reportMenuFailure(CommandSender sender, Exception ex) {
+        InventoryRollback.getInstance().getLogger().log(Level.WARNING, "Could not open the rollback menu", ex);
+        sender.sendMessage(MessageData.getPluginPrefix() + MessageData.getError());
     }
 
     private void openMainMenu(Player staff) {

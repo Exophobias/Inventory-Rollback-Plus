@@ -1,13 +1,16 @@
 package me.danjono.inventoryrollback.gui.menu;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 
+import com.nuclyon.technicallycoded.inventoryrollback.util.SyncExecutor;
 import me.danjono.inventoryrollback.config.MessageData;
 import me.danjono.inventoryrollback.data.LogType;
 import me.danjono.inventoryrollback.gui.Buttons;
@@ -53,13 +56,17 @@ public class MainMenu {
         return this.inventory;
     }
 
-    public void getMainMenu() {        
+    public void getMainMenu() {
+        // Build the icons off-thread, then hand the finished set to the main thread in one go:
+        // the menu is already open in front of the player by the time we get here.
+        Map<Integer, ItemStack> icons = new LinkedHashMap<>();
+
         int selection = startSelection;
         for (int i = 0; i < playerHeadLoops; i++) {
             Player player = onlinePlayers.get(selection);
             Buttons playerButton = new Buttons(player);
 
-            inventory.setItem(i, playerButton.playerHead(null, true));
+            icons.put(i, playerButton.playerHead(null, true));
             selection++;
         }
 
@@ -68,9 +75,11 @@ public class MainMenu {
             lore.add("Page " + (pageNumber + 1));
             ItemStack nextPage = buttons.nextButton(MessageData.getNextPageButton(), LogType.UNKNOWN, pageNumber + 1, lore);
 
-            inventory.setItem(InventoryName.MAIN_MENU.getSize() - 2, nextPage);
+            icons.put(InventoryName.MAIN_MENU.getSize() - 2, nextPage);
             lore.clear();
         }
+
+        SyncExecutor.run(() -> icons.forEach(inventory::setItem));
     }
 
     public void getPlayerHeadData() {

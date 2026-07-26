@@ -20,6 +20,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.logging.Level;
 
 public class SaveInventory {
 
@@ -61,8 +62,11 @@ public class SaveInventory {
         }
         userLogRateLimiter.log(logType, timestamp);
         if (userLogRateLimiter.isRateLimitExceeded(logType)) {
-            main.getLogger().warning("Player " + player.getName() + " is being rate limited! This means that something is causing this log to be created FASTER than even once per tick! Log type: " + logType.name());
-            new IllegalStateException("Rate limiting reached! This should never happen under normal operation!").printStackTrace();
+            // Logged with the trace attached so the warning and the stack land together, attributed
+            // to this plugin, instead of an anonymous trace on stderr.
+            main.getLogger().log(Level.WARNING,
+                    "Player " + player.getName() + " is being rate limited! This means that something is causing this log to be created FASTER than even once per tick! Log type: " + logType.name(),
+                    new IllegalStateException("Rate limiting reached! This should never happen under normal operation!"));
             return;
         }
 

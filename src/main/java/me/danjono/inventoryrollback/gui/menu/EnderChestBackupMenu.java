@@ -1,6 +1,7 @@
 package me.danjono.inventoryrollback.gui.menu;
 
 import com.nuclyon.technicallycoded.inventoryrollback.InventoryRollbackPlus;
+import com.nuclyon.technicallycoded.inventoryrollback.util.SyncExecutor;
 import com.tcoded.lightlibs.bukkitversion.MCVersion;
 import me.danjono.inventoryrollback.config.ConfigData;
 import me.danjono.inventoryrollback.config.MessageData;
@@ -15,7 +16,9 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public class EnderChestBackupMenu {
@@ -43,8 +46,10 @@ public class EnderChestBackupMenu {
         this.enderchest = data.getEnderChest();
         this.pageNumber = pageNumberIn;
         this.buttons = new Buttons(playerUUID);
-        
-        createInventory();
+
+        // Built off the main thread for the deserialisation above; the inventory itself is Bukkit
+        // API and belongs on it. Waiting also publishes it back for showEnderChestItems().
+        SyncExecutor.runAndWait(this::createInventory);
     }
 
     public void createInventory() {
@@ -118,28 +123,34 @@ public class EnderChestBackupMenu {
             return;
         }
 
+        // The item placement above is a sync repeating task, but these buttons are built and placed
+        // right here - on whichever thread called us. Batch them onto the main thread.
+        Map<Integer, ItemStack> icons = new LinkedHashMap<>();
+
         // Add restore all player inventory button
         if (ConfigData.isRestoreToPlayerButton()) {
-            inventory.setItem(
+            icons.put(
                     InventoryName.ENDER_CHEST_BACKUP.getSize() - 5,
                     buttons.restoreAllInventory(logType, timestamp));
         } else {
-            inventory.setItem(
+            icons.put(
                     InventoryName.ENDER_CHEST_BACKUP.getSize() - 5,
                     buttons.restoreAllInventoryDisabled(logType, timestamp));
         }
 
         if (main.getVersion().greaterOrEqThan(MCVersion.v1_11.toBukkitVersion()))
-            inventory.setItem(GIVE_SHULKERS_BUTTON_SLOT, buttons.giveShulkerBox(logType, timestamp));
+            icons.put(GIVE_SHULKERS_BUTTON_SLOT, buttons.giveShulkerBox(logType, timestamp));
 
         List<String> lore = new ArrayList<>();
         if (pageNumber < pagesRequired) {
             lore.add("Page " + (pageNumber + 1));
             ItemStack nextPage = buttons.enderChestNextButton(MessageData.getNextPageButton(), logType, pageNumber + 1, timestamp, lore);
 
-            inventory.setItem(InventoryName.ENDER_CHEST_BACKUP.getSize() - 2, nextPage);
+            icons.put(InventoryName.ENDER_CHEST_BACKUP.getSize() - 2, nextPage);
             lore.clear();
         }
+
+        SyncExecutor.run(() -> icons.forEach(inventory::setItem));
     }
 
 }

@@ -6,7 +6,6 @@ import me.danjono.inventoryrollback.config.MessageData;
 import me.danjono.inventoryrollback.gui.InventoryName;
 import me.danjono.inventoryrollback.inventory.RestoreInventory;
 import me.danjono.inventoryrollback.inventory.SaveInventory;
-import org.apache.commons.lang3.StringUtils;
 import org.bukkit.ChatColor;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -14,11 +13,19 @@ import org.bukkit.inventory.ItemStack;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
+import java.util.logging.Level;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class YAML {
 
@@ -44,6 +51,15 @@ public class YAML {
     private String deathReason;
 
     private static final String backupFolderName = "backups";
+
+    /** A backup file is a millisecond timestamp and nothing else. Temp files and strays are not backups. */
+    private static final Pattern BACKUP_FILE_NAME = Pattern.compile("^(\\d+)\\.yml$");
+
+    /** How long a freshly written backup is ignored for, so we never read or purge a file mid-write. */
+    private static final long WRITE_SETTLE_MS = 1000;
+
+    /** Suffix for the scratch file an atomic save is staged through. */
+    private static final String TEMP_SUFFIX = ".tmp";
 
     public YAML(UUID uuid, LogType logType, Long timestampIn) {
         this.uuid = uuid;
@@ -116,40 +132,56 @@ public class YAML {
         return getAmountOfBackups() > 0;
     }
 
-    public int getAmountOfBackups() {         
-        if (!playerBackupFolder.exists()) return 0;
+    /**
+     * Every readable backup in this player's folder, newest first.
+     * <p>
+     * This is the single definition of "a backup exists" - the count, the menu pages and the purge
+     * all run off it. When they each filtered the folder their own way the count could disagree
+     * with the list, which showed up as blank menu slots and off-by-one page counts.
+     */
+    private List<Long> listBackupTimestamps() {
+        List<Long> timestamps = new ArrayList<>();
 
-        String[] filesArr = playerBackupFolder.list();
-        if (filesArr == null) return 0;
-
-        return filesArr.length;
-    }
-
-    public List<Long> getSelectedPageTimestamps(int pageNumber) {
-        List<Long> allTimeStamps = new ArrayList<>();
-
-        if (!playerBackupFolder.exists())
-            return allTimeStamps;
+        File[] backupFiles = playerBackupFolder.listFiles();
+        if (backupFiles == null) return timestamps;
 
         long currTime = System.currentTimeMillis();
 
-        for (File file : playerBackupFolder.listFiles()) {
+        for (File file : backupFiles) {
             if (file.isDirectory())
                 continue;
 
-            int pos = file.getName().lastIndexOf('.');
-            String fileName = file.getName().substring(0, pos);
-
-            if (fileName.isEmpty() || !StringUtils.isNumeric(fileName))
+            Matcher matcher = BACKUP_FILE_NAME.matcher(file.getName());
+            if (!matcher.matches())
                 continue;
 
-            long timestamp = Long.parseLong(fileName);
+            long timestamp;
+            try {
+                timestamp = Long.parseLong(matcher.group(1));
+            } catch (NumberFormatException ex) {
+                // Timestamp too large to be one of ours
+                continue;
+            }
+
             // Make sure that the file hasn't been created in the last 1s: we could still be writing to it
-            if (currTime - timestamp > 1000) allTimeStamps.add(timestamp);
+            if (currTime - timestamp <= WRITE_SETTLE_MS)
+                continue;
+
+            timestamps.add(timestamp);
         }
 
         //Set timestamps in order
-        Collections.sort(allTimeStamps, Collections.reverseOrder());
+        Collections.sort(timestamps, Collections.reverseOrder());
+
+        return timestamps;
+    }
+
+    public int getAmountOfBackups() {
+        return listBackupTimestamps().size();
+    }
+
+    public List<Long> getSelectedPageTimestamps(int pageNumber) {
+        List<Long> allTimeStamps = listBackupTimestamps();
 
         //Number of backups that will be on the page
         int backups = InventoryName.ROLLBACK_LIST.getSize() - 9;
@@ -171,47 +203,20 @@ public class YAML {
     }
 
     public void purgeExcessSaves(int deleteAmount) {
-        List<Long> timeSaved = new ArrayList<>();
+        List<Long> timeSaved = listBackupTimestamps();
 
-        File[] backupFiles = playerBackupFolder.listFiles();
-        if (backupFiles == null) return;
-
-        for (File file : backupFiles) {
-            if (file.isDirectory())
-                continue;
-
-            int pos = file.getName().lastIndexOf('.');
-            String fileName = file.getName().substring(0, pos);
-
-            if (!StringUtils.isNumeric(fileName))
-                continue;
-
-            long saveTimeStamp;
-            try {
-                saveTimeStamp = Long.parseLong(fileName);
-            } catch (NumberFormatException ex) {
-                continue;
-            }
-
-            // In the case the backup was created less than a second ago, ignore it to avoid data corruption
-            if (System.currentTimeMillis() - saveTimeStamp < 1000) {
-                continue;
-            }
-
-            timeSaved.add(saveTimeStamp);
-        }
-
-
+        // Newest first, so the oldest saves - the ones we drop - are at the tail
         for (int i = 0; i < deleteAmount; i++) {
             if (timeSaved.isEmpty()) break;
 
-            Long deleteTimestamp = Collections.min(timeSaved);
-            timeSaved.remove(deleteTimestamp);
+            Long deleteTimestamp = timeSaved.remove(timeSaved.size() - 1);
+            File expiredBackup = new File(playerBackupFolder, deleteTimestamp + ".yml");
 
             try {
-                Files.deleteIfExists(new File (playerBackupFolder, deleteTimestamp + ".yml").toPath());
+                Files.deleteIfExists(expiredBackup.toPath());
             } catch (IOException ex) {
-                ex.printStackTrace();
+                InventoryRollbackPlus.getInstance().getLogger().log(Level.WARNING,
+                        "Could not delete expired backup " + expiredBackup.getAbsolutePath(), ex);
             }
         }
     }
@@ -287,20 +292,68 @@ public class YAML {
         return RestoreInventory.getInventoryItems(getVersion(), base64);
     }
 
+    /**
+     * Converts a stored config value to a double, tolerating both the numbers current backups write
+     * and the quoted strings older ones used. Returns null when the value is not numeric at all.
+     * <p>
+     * Neither built-in accessor covers both: {@code getDouble}/{@code getInt} return their default
+     * for anything that is not a {@link Number}, so they silently zero a string-typed value, while
+     * {@code Float.parseFloat(getString(...))} throws NPE when the key is missing entirely.
+     */
+    static Double toDouble(Object value) {
+        if (value == null) return null;
+        if (value instanceof Number) return ((Number) value).doubleValue();
+
+        try {
+            return Double.parseDouble(value.toString().trim());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    static Float toFloat(Object value) {
+        Double parsed = toDouble(value);
+        return parsed == null ? null : parsed.floatValue();
+    }
+
+    /** Reads a numeric field, falling back to 0 and warning if a value is present but unreadable. */
+    private double readDouble(String path) {
+        Object raw = data.get(path);
+        Double parsed = toDouble(raw);
+
+        if (parsed != null) return parsed;
+
+        // A missing key is normal for older backups; a present-but-unparseable one is worth flagging.
+        if (raw != null) {
+            InventoryRollbackPlus.getInstance().getLogger().warning(
+                    "Backup " + backupFile.getAbsolutePath() + " has a non-numeric " + path + " value '" + raw + "'");
+        }
+
+        return 0d;
+    }
+
+    private float readFloat(String path) {
+        return (float) readDouble(path);
+    }
+
+    private int readInt(String path) {
+        return (int) readDouble(path);
+    }
+
     public float getXP() {
-        return Float.parseFloat(data.getString("xp"));
+        return readFloat("xp");
     }
 
     public double getHealth() {
-        return data.getDouble("health");
+        return readDouble("health");
     }
 
     public int getFoodLevel() {
-        return data.getInt("hunger");
+        return readInt("hunger");
     }
 
     public float getSaturation() {
-        return Float.parseFloat(data.getString("saturation"));
+        return readFloat("saturation");
     }
 
     public String getWorld() {
@@ -308,27 +361,28 @@ public class YAML {
     }
 
     public double getX() {
-        return data.getDouble("location.x");
+        return readDouble("location.x");
     }
 
     public double getY() {
-        return data.getDouble("location.y");
+        return readDouble("location.y");
     }
 
     public double getZ() {
-        return data.getDouble("location.z");
+        return readDouble("location.z");
     }
 
     public LogType getSaveType() {
-        LogType logType = null;
+        String storedType = data.getString("logType");
+        if (storedType == null) return null;
 
         try {
-            logType = LogType.valueOf(data.getString("logType").toUpperCase());
-        } catch (NullPointerException e) {
-            e.printStackTrace();
+            return LogType.valueOf(storedType.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            InventoryRollbackPlus.getInstance().getLogger().warning(
+                    "Backup " + backupFile.getAbsolutePath() + " has an unrecognised log type '" + storedType + "'");
+            return null;
         }
-
-        return logType;
     }
 
     public String getVersion() {
@@ -355,11 +409,35 @@ public class YAML {
         data.set("version", packageVersion);
         data.set("deathReason", deathReason);
 
-        try {
-            data.save(backupFile);
-        } catch (IOException e) {
-            e.printStackTrace();
+        Path target = backupFile.toPath();
+        Path temp = target.resolveSibling(backupFile.getName() + TEMP_SUFFIX);
 
+        try {
+            // FileConfiguration#save would have done this for us, we stage the write ourselves now
+            Files.createDirectories(target.getParent());
+
+            // Write to a scratch file and move it into place, so a crash or a full disk part way
+            // through can never leave a half-written backup where a good one used to be.
+            Files.write(temp, data.saveToString().getBytes(StandardCharsets.UTF_8));
+
+            try {
+                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException ex) {
+                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException e) {
+            // Clean up before logging: the logger call needs the plugin instance, and losing the
+            // scratch file matters more than the message if that lookup ever fails.
+            try {
+                Files.deleteIfExists(temp);
+            } catch (IOException cleanupEx) {
+                // Nothing more to try. A stray .tmp does not match BACKUP_FILE_NAME, so it is inert -
+                // never listed, restored or purged. Only a hard crash between the write and the move
+                // above can strand one, and it costs a single unreferenced file.
+            }
+
+            InventoryRollbackPlus.getInstance().getLogger().log(Level.SEVERE,
+                    "Failed to write backup " + backupFile.getAbsolutePath() + " - this backup was NOT saved!", e);
         }
     }
 

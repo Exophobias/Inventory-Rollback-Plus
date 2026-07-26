@@ -2,7 +2,9 @@ package me.danjono.inventoryrollback.gui.menu;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.bukkit.Bukkit;
@@ -10,7 +12,9 @@ import org.bukkit.ChatColor;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
 
+import com.nuclyon.technicallycoded.inventoryrollback.util.SyncExecutor;
 import me.danjono.inventoryrollback.config.MessageData;
 import me.danjono.inventoryrollback.data.LogType;
 import me.danjono.inventoryrollback.data.PlayerData;
@@ -63,7 +67,10 @@ public class PlayerMenu {
             lore.add(ChatColor.RED + "Last online: " + dateTime);
         }
         
-        inventory.setItem(0, buttons.playerHead(lore, true));
+        // Built off-thread (these hit disk or the database), applied on the main thread in one go
+        Map<Integer, ItemStack> icons = new LinkedHashMap<>();
+
+        icons.put(0, buttons.playerHead(lore, true));
         UUID uuid = offlinePlayer.getUniqueId();
 
         PlayerData deathBackup = new PlayerData(uuid, LogType.DEATH, null);
@@ -85,19 +92,21 @@ public class PlayerMenu {
         String backupsAvailable = " backup(s) available";
 
         List<String> deaths = Arrays.asList(deathBackup.getAmountOfBackups() + backupsAvailable);
-        inventory.setItem(2, buttons.createDeathLogButton(LogType.DEATH, deaths));
-        
+        icons.put(2, buttons.createDeathLogButton(LogType.DEATH, deaths));
+
         List<String> joins = Arrays.asList(joinBackup.getAmountOfBackups() + backupsAvailable);
-        inventory.setItem(3, buttons.createJoinLogButton(LogType.JOIN, joins));
-        
+        icons.put(3, buttons.createJoinLogButton(LogType.JOIN, joins));
+
         List<String> quits = Arrays.asList(quitBackup.getAmountOfBackups() + backupsAvailable);
-        inventory.setItem(4, buttons.createQuitLogButton(LogType.QUIT, quits));
-        
+        icons.put(4, buttons.createQuitLogButton(LogType.QUIT, quits));
+
         List<String> worldChange = Arrays.asList(worldChangeBackup.getAmountOfBackups() + backupsAvailable);
-        inventory.setItem(5, buttons.createWorldChangeLogButton(LogType.WORLD_CHANGE, worldChange));
-        
+        icons.put(5, buttons.createWorldChangeLogButton(LogType.WORLD_CHANGE, worldChange));
+
         List<String> forceSaves = Arrays.asList(forceSaveBackup.getAmountOfBackups() + backupsAvailable);
-        inventory.setItem(6, buttons.createForceSaveLogButton(LogType.FORCE, forceSaves));
+        icons.put(6, buttons.createForceSaveLogButton(LogType.FORCE, forceSaves));
+
+        SyncExecutor.run(() -> icons.forEach(inventory::setItem));
     }
 
 }

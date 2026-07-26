@@ -14,6 +14,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
 import java.util.UUID;
+import java.util.logging.Level;
 
 public class RestoreSubCmd extends IRPCommand {
 
@@ -44,7 +45,9 @@ public class RestoreSubCmd extends IRPCommand {
         if (args.length <= 0 || args.length == 1) {
             try {
                 openMainMenu(staff);
-            } catch (NullPointerException ignored) {}
+            } catch (NullPointerException e) {
+                reportMenuFailure(sender, e);
+            }
         } else if(args.length == 2) {
             OfflinePlayer rollbackPlayer;
 
@@ -80,10 +83,18 @@ public class RestoreSubCmd extends IRPCommand {
 
             try {
                 openPlayerMenu(staff, rollbackPlayer);
-            } catch (NullPointerException e) {}
+            } catch (NullPointerException e) {
+                reportMenuFailure(sender, e);
+            }
         } else {
             sender.sendMessage(MessageData.getPluginPrefix() + MessageData.getError());
         }
+    }
+
+    /** The menu failed to build. Tell the sender instead of silently doing nothing, and leave a trace to debug from. */
+    private void reportMenuFailure(CommandSender sender, Exception ex) {
+        this.main.getLogger().log(Level.WARNING, "Could not open the rollback menu", ex);
+        sender.sendMessage(MessageData.getPluginPrefix() + MessageData.getError());
     }
 
     private void openMainMenu(Player staff) {

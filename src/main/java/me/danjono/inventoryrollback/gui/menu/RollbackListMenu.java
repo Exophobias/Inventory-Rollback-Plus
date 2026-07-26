@@ -1,8 +1,11 @@
 package me.danjono.inventoryrollback.gui.menu;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.logging.Level;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -11,6 +14,8 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 
+import com.nuclyon.technicallycoded.inventoryrollback.InventoryRollbackPlus;
+import com.nuclyon.technicallycoded.inventoryrollback.util.SyncExecutor;
 import me.danjono.inventoryrollback.config.MessageData;
 import me.danjono.inventoryrollback.data.LogType;
 import me.danjono.inventoryrollback.data.PlayerData;
@@ -83,6 +88,13 @@ public class RollbackListMenu {
         int backupsOnCurrentPage = Math.min(backups, Math.min(spaceRequired, backups - backupsAlreadyPassed));
         List<Long> timeStamps = playerData.getSelectedPageTimestamps(pageNumber);
 
+        // Built off-thread (every entry reads a backup), applied on the main thread in one go
+        Map<Integer, ItemStack> icons = new LinkedHashMap<>();
+
+        // The count and the list come from the same scan now, but stay defensive: a save landing
+        // between the two calls would otherwise walk off the end of the list.
+        backupsOnCurrentPage = Math.min(backupsOnCurrentPage, timeStamps.size());
+
         int position = 0;
         for (int i = 0; i < backupsOnCurrentPage; i++) {
             try {
@@ -112,10 +124,11 @@ public class RollbackListMenu {
 
                 ItemStack item = buttons.createInventoryButton(new ItemStack(Material.CHEST), logType, location, timestamp, displayName, lore);
 
-                inventory.setItem(position, item);
+                icons.put(position, item);
 
             } catch (IndexOutOfBoundsException e) {
-                e.printStackTrace();
+                InventoryRollbackPlus.getInstance().getLogger().log(Level.WARNING,
+                        "Could not build backup entry " + i + " for " + playerUUID, e);
             }
 
             position++;
@@ -126,9 +139,11 @@ public class RollbackListMenu {
             lore.add("Page " + (pageNumber + 1));
             ItemStack nextPage = buttons.nextButton(MessageData.getNextPageButton(), logType, pageNumber + 1, lore);
 
-            inventory.setItem(position + 7, nextPage);
+            icons.put(position + 7, nextPage);
             lore.clear();
         }
+
+        SyncExecutor.run(() -> icons.forEach(inventory::setItem));
     }
 
 }
