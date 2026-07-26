@@ -1,6 +1,7 @@
 package me.danjono.inventoryrollback.config;
 
 import com.nuclyon.technicallycoded.inventoryrollback.InventoryRollbackPlus;
+import com.nuclyon.technicallycoded.inventoryrollback.util.serialization.ItemStackSerialization;
 import me.danjono.inventoryrollback.InventoryRollback;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -109,8 +110,13 @@ public class ConfigData {
     private static boolean bStatsEnabled;
     private static boolean debugEnabled;
 
-    public void setVariables() {		
+    /** "auto", "3" or "4". See getSerializationFormat(). */
+    private static String serializationFormat = "auto";
+
+    public void setVariables() {
         setEnabled((boolean) getDefaultValue("enabled", true));
+
+        setSerializationFormat((String) getDefaultValue("serialization-format", "auto"));
 
         String folder = (String) getDefaultValue("folder-location", "DEFAULT");
         if (folder.equalsIgnoreCase("DEFAULT") || folder.isEmpty()) {
@@ -410,6 +416,35 @@ public class ConfigData {
 
     public static boolean isSaveEmptyInventories() {
         return saveEmptyInventories;
+    }
+
+    public static void setSerializationFormat(String value) {
+        if (value == null) {
+            serializationFormat = "auto";
+            return;
+        }
+
+        String normalised = value.trim().toLowerCase(java.util.Locale.ROOT);
+
+        if (!normalised.equals("auto") && !normalised.equals("3") && !normalised.equals("4")) {
+            InventoryRollback.getInstance().getLogger().warning(
+                    "Unknown serialization-format '" + value + "'. Using 'auto'.");
+            normalised = "auto";
+        }
+
+        serializationFormat = normalised;
+        ItemStackSerialization.setPreferredFormat(normalised);
+    }
+
+    /**
+     * Which item format new backups are written in.
+     * <p>
+     * "auto" writes the Paper NBT format when the server supports it and falls back otherwise.
+     * "3" pins the older format, which is what you want before downgrading to a jar that cannot
+     * read version 4. "4" forces the Paper format.
+     */
+    public static String getSerializationFormat() {
+        return serializationFormat;
     }
 
     public static int getBackupLinesVisible() {

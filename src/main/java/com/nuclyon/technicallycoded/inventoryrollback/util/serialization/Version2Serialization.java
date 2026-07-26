@@ -23,8 +23,14 @@ public class Version2Serialization {
     }
 
     public static DeserializationResult deserialize(InputStream bais) throws IOException {
+        // A truncated stream always poisons the most significant byte of a little-endian readInt,
+        // so a short read here comes back negative and the array allocation throws. That is the
+        // behaviour we want: a damaged frame is not something we can recover slot by slot.
         int itemCount = readInt(bais);
         ItemStack[] items = new ItemStack[itemCount];
+
+        int failedSlots = 0;
+        String firstError = null;
 
         for (int i = 0; i < items.length; i++) {
             // Read the length of the serialized item
@@ -44,9 +50,17 @@ public class Version2Serialization {
             try {
                 items[i] = deserializeItem(serializedItem);
             } catch (Exception ex) {
-                ex.printStackTrace();
-                return new DeserializationResult(null, "Failed to deserialize item stack: " + ex.getMessage());
+                // Each item is length-prefixed, so one unreadable stack costs that slot and nothing
+                // else. Returning null here would throw away every other item in the backup.
+                items[i] = null;
+                failedSlots++;
+                if (firstError == null) firstError = ex.getMessage();
             }
+        }
+
+        if (failedSlots > 0) {
+            return DeserializationResult.partial(items, failedSlots,
+                    failedSlots + " item(s) could not be read and were left empty. First error: " + firstError);
         }
 
         return new DeserializationResult(items, null);

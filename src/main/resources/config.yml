@@ -12,6 +12,15 @@ max-saves:
 ## Number of lines shown with backups on (Max: 5)
 backup-lines-visible: 4
 
+## Which format new backups store items in. Existing backups are always read, whatever this says.
+##   auto - use the Paper NBT format when the server supports it (Paper 1.15.2+), otherwise the
+##          older format. Paper's format carries a data version, so those backups keep working
+##          across Minecraft upgrades. This is what you want.
+##   3    - always use the older format. Set this BEFORE downgrading to an older build of this
+##          plugin, because older builds cannot read format 4.
+##   4    - always use the Paper format. Falls back to 3 if the server does not support it.
+serialization-format: 'auto'
+
 ## Set folder path where the data is saved to. Set as "DEFAULT" to keep it in the plugin folder.
 folder-location: 'DEFAULT'
 

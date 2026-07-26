@@ -290,6 +290,12 @@ public class ClickGUI implements Listener {
                     ItemStack[] mainInventory = data.getMainInventory();
                     ItemStack[] extraItems = data.getArmour();
 
+                    // Null only when the backup was wholly unreadable. Say so rather than NPE.
+                    if (mainInventory == null) {
+                        staff.sendMessage(MessageData.getPluginPrefix() + MessageData.getErrorInventory());
+                        return;
+                    }
+
                     if (extraItems == null || extraItems.length == 0) {
                         int extraItemsLen = mainInventory.length - 36;
                         extraItems = new ItemStack[extraItemsLen];
@@ -373,6 +379,13 @@ public class ClickGUI implements Listener {
 
                             ItemStack[] inventory = data.getMainInventory();
                             ItemStack[] armour = data.getArmour();
+
+                            // Refuse rather than wipe: setContents(null) would clear the player's
+                            // inventory and put nothing back.
+                            if (inventory == null) {
+                                staff.sendMessage(MessageData.getPluginPrefix() + MessageData.getErrorInventory());
+                                return;
+                            }
 
                             // Place inventory items sync (compressed code)
                             Future<Void> futureSetInv = main.getServer().getScheduler().callSyncMethod(main,

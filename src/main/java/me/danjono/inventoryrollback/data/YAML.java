@@ -50,6 +50,9 @@ public class YAML {
     private String packageVersion;
     private String deathReason;
 
+    /** Item fields that failed to encode. Non-empty means this backup must not be written. */
+    private final List<String> failedFields = new ArrayList<>();
+
     private static final String backupFolderName = "backups";
 
     /** A backup file is a millisecond timestamp and nothing else. Temp files and strays are not backups. */
@@ -221,16 +224,26 @@ public class YAML {
         }
     }
 
+    /**
+     * Encodes one item field, remembering the field name if it could not be encoded.
+     * A backup missing its items is worse than no backup at all, because it looks valid.
+     */
+    private String encodeItems(String field, ItemStack[] items) {
+        String encoded = SaveInventory.toBase64(items);
+        if (encoded == null) failedFields.add(field);
+        return encoded;
+    }
+
     public void setMainInventory(ItemStack[] items) {
-        this.mainInventory = SaveInventory.toBase64(items);
+        this.mainInventory = encodeItems("inventory", items);
     }
 
     public void setArmour(ItemStack[] items) {
-        this.armour = SaveInventory.toBase64(items);
+        this.armour = encodeItems("armour", items);
     }
 
     public void setEnderChest(ItemStack[] items) {
-        this.enderChest = SaveInventory.toBase64(items);
+        this.enderChest = encodeItems("enderchest", items);
     }
 
     public void setXP(float xp) {
@@ -394,6 +407,14 @@ public class YAML {
     }
 
     public void saveData() {
+        if (!failedFields.isEmpty()) {
+            // Writing anyway would produce a file that looks like a valid empty inventory.
+            InventoryRollbackPlus.getInstance().getLogger().severe(
+                    "Refusing to write backup " + backupFile.getAbsolutePath() + ": could not serialize "
+                            + String.join(", ", failedFields) + ". This backup was NOT saved.");
+            return;
+        }
+
         data.set("inventory", mainInventory);
         data.set("armour", armour);
         data.set("enderchest", enderChest);

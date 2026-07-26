@@ -1,10 +1,13 @@
 package me.danjono.inventoryrollback.inventory;
 
+import com.nuclyon.technicallycoded.inventoryrollback.InventoryRollbackPlus;
+import com.nuclyon.technicallycoded.inventoryrollback.util.serialization.DeserializationResult;
 import com.nuclyon.technicallycoded.inventoryrollback.util.serialization.ItemStackSerialization;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
 import java.math.BigDecimal;
+import java.util.logging.Level;
 
 public class RestoreInventory {
 
@@ -13,15 +16,24 @@ public class RestoreInventory {
     }
 
     public static ItemStack[] getInventoryItems(String packageVersion, String base64) {
-        ItemStack[] inv = null;
-
         try {
-            inv = ItemStackSerialization.deserializeData(packageVersion, base64).getItems();
-        } catch (IllegalArgumentException e) {
-            e.printStackTrace();
-        }
+            DeserializationResult result = ItemStackSerialization.deserializeData(packageVersion, base64);
 
-        return inv;
+            if (result.isPartial()) {
+                // Recoverable: the staff member gets the rest of the inventory, and we say what was lost.
+                InventoryRollbackPlus.getInstance().getLogger().warning(
+                        "Backup partially recovered. " + result.getErrorMessage());
+            } else if (result.getItems() == null && result.getErrorMessage() != null) {
+                InventoryRollbackPlus.getInstance().getLogger().warning(
+                        "Backup could not be read. " + result.getErrorMessage());
+            }
+
+            return result.getItems();
+        } catch (IllegalArgumentException e) {
+            InventoryRollbackPlus.getInstance().getLogger().log(Level.WARNING,
+                    "Backup could not be decoded", e);
+            return null;
+        }
     }
 
     //Credits to Dev_Richard (https://www.spigotmc.org/members/dev_richard.38792/)
