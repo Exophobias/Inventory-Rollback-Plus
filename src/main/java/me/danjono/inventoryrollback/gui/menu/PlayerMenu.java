@@ -19,6 +19,7 @@ import me.danjono.inventoryrollback.config.MessageData;
 import me.danjono.inventoryrollback.data.LogType;
 import me.danjono.inventoryrollback.data.PlayerData;
 import me.danjono.inventoryrollback.gui.Buttons;
+import me.danjono.inventoryrollback.gui.IRPMenuHolder;
 import me.danjono.inventoryrollback.gui.InventoryName;
 
 public class PlayerMenu {
@@ -38,7 +39,10 @@ public class PlayerMenu {
     }
 
     public void createInventory() {
-        inventory = Bukkit.createInventory(staff, InventoryName.PLAYER_MENU.getSize(), InventoryName.PLAYER_MENU.getName());
+        // A holder identifies the menu to the listeners; a title string cannot be trusted
+        IRPMenuHolder holder = new IRPMenuHolder(InventoryName.PLAYER_MENU);
+        inventory = Bukkit.createInventory(holder, InventoryName.PLAYER_MENU.getSize(), InventoryName.PLAYER_MENU.getName());
+        holder.setInventory(inventory);
         
         inventory.setItem(2, buttons.createDeathLogButton(LogType.DEATH, null));
         inventory.setItem(3, buttons.createJoinLogButton(LogType.JOIN, null));

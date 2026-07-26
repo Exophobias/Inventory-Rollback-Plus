@@ -8,6 +8,7 @@ import me.danjono.inventoryrollback.config.MessageData;
 import me.danjono.inventoryrollback.data.LogType;
 import me.danjono.inventoryrollback.data.PlayerData;
 import me.danjono.inventoryrollback.gui.Buttons;
+import me.danjono.inventoryrollback.gui.IRPMenuHolder;
 import me.danjono.inventoryrollback.gui.InventoryName;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -53,7 +54,10 @@ public class EnderChestBackupMenu {
     }
 
     public void createInventory() {
-        inventory = Bukkit.createInventory(staff, InventoryName.ENDER_CHEST_BACKUP.getSize(), InventoryName.ENDER_CHEST_BACKUP.getName());
+        // A holder identifies the menu to the listeners; a title string cannot be trusted
+        IRPMenuHolder holder = new IRPMenuHolder(InventoryName.ENDER_CHEST_BACKUP);
+        inventory = Bukkit.createInventory(holder, InventoryName.ENDER_CHEST_BACKUP.getSize(), InventoryName.ENDER_CHEST_BACKUP.getName());
+        holder.setInventory(inventory);
 
         List<String> lore = new ArrayList<>();
         if (pageNumber == 1) {

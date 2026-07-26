@@ -14,6 +14,7 @@ import com.nuclyon.technicallycoded.inventoryrollback.util.SyncExecutor;
 import me.danjono.inventoryrollback.config.MessageData;
 import me.danjono.inventoryrollback.data.LogType;
 import me.danjono.inventoryrollback.gui.Buttons;
+import me.danjono.inventoryrollback.gui.IRPMenuHolder;
 import me.danjono.inventoryrollback.gui.InventoryName;
 
 public class MainMenu {
@@ -40,7 +41,10 @@ public class MainMenu {
     }
 
     public void createInventory() {
-        inventory = Bukkit.createInventory(staff, InventoryName.MAIN_MENU.getSize(), InventoryName.MAIN_MENU.getName());
+        // A holder identifies the menu to the listeners; a title string cannot be trusted
+        IRPMenuHolder holder = new IRPMenuHolder(InventoryName.MAIN_MENU);
+        inventory = Bukkit.createInventory(holder, InventoryName.MAIN_MENU.getSize(), InventoryName.MAIN_MENU.getName());
+        holder.setInventory(inventory);
 
         List<String> lore = new ArrayList<>(); 
         if (pageNumber > 1) {

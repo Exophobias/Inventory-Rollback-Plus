@@ -12,6 +12,7 @@ import me.danjono.inventoryrollback.config.SoundData;
 import me.danjono.inventoryrollback.data.LogType;
 import me.danjono.inventoryrollback.data.PlayerData;
 import me.danjono.inventoryrollback.gui.Buttons;
+import me.danjono.inventoryrollback.gui.IRPMenuHolder;
 import me.danjono.inventoryrollback.gui.InventoryName;
 import me.danjono.inventoryrollback.gui.menu.*;
 import me.danjono.inventoryrollback.inventory.RestoreInventory;
@@ -39,34 +40,19 @@ public class ClickGUI implements Listener {
 
     private final InventoryRollbackPlus main;
 
-    private static boolean isLocationAvailable(Location location) {
-        return location != null;
-    }
-
     public ClickGUI() {
         this.main = InventoryRollbackPlus.getInstance();
     }
 
     @EventHandler
     public void onInventoryDrag(InventoryDragEvent e) {
-        //Cancel listener if the event is not for an EpicFishing GUI menu
-        String title = e.getView().getTitle();
-        if (!title.equals(InventoryName.MAIN_MENU.getName()) 
-                && !title.equals(InventoryName.PLAYER_MENU.getName()) 
-                && !title.equalsIgnoreCase(InventoryName.ROLLBACK_LIST.getName())
-                && !title.equalsIgnoreCase(InventoryName.MAIN_BACKUP.getName())
-                && !title.equalsIgnoreCase(InventoryName.ENDER_CHEST_BACKUP.getName()))
-            return;
+        // Not one of our menus, nothing to police. The holder travels with the inventory, so a
+        // player-owned chest can no longer impersonate a menu by matching its title.
+        if (IRPMenuHolder.typeOf(e.getView().getTopInventory()) == null) return;
 
         e.setCancelled(true);
 
-        //Check if inventory is a virtual one and not one that has the same name on a player chest
-        if (this.main.getVersion().greaterOrEqThan(BukkitVersion.v1_9_R1) && isLocationAvailable(e.getInventory().getLocation())) {
-            e.setCancelled(false);
-            return;
-        }
-
-        for (Integer slot : e.getRawSlots()) {            
+        for (Integer slot : e.getRawSlots()) {
             if (slot < e.getInventory().getSize()) {
                 return;
             }
@@ -79,51 +65,39 @@ public class ClickGUI implements Listener {
 
     @EventHandler
     public void onInventoryClick(InventoryClickEvent e) {
-        String title = e.getView().getTitle();
-        if (!title.equals(InventoryName.MAIN_MENU.getName()) 
-                && !title.equals(InventoryName.PLAYER_MENU.getName()) 
-                && !title.equalsIgnoreCase(InventoryName.ROLLBACK_LIST.getName())
-                && !title.equalsIgnoreCase(InventoryName.MAIN_BACKUP.getName())
-                && !title.equalsIgnoreCase(InventoryName.ENDER_CHEST_BACKUP.getName()))
-            return;
-
-        //Check if inventory is a virtual one and not one that has the same name on a player chest
-        if (this.main.getVersion().greaterOrEqThan(BukkitVersion.v1_9_R1) && isLocationAvailable(e.getInventory().getLocation())) {
-            return;
-        }
+        InventoryName menu = IRPMenuHolder.typeOf(e.getView().getTopInventory());
+        if (menu == null) return;
 
         e.setCancelled(true);
 
         Player staff = (Player) e.getWhoClicked();
         ItemStack icon = e.getCurrentItem();
 
-        //Listener for player menu
-        if (title.equals(InventoryName.MAIN_MENU.getName())) {
-            mainMenu(e,staff, icon);
-        }
+        switch (menu) {
+            //Listener for main menu
+            case MAIN_MENU:
+                mainMenu(e, staff, icon);
+                break;
 
-        //Listener for player menu
-        else if (title.equals(InventoryName.PLAYER_MENU.getName())) {
-            playerMenu(e,staff, icon);
-        }
+            //Listener for player menu
+            case PLAYER_MENU:
+                playerMenu(e, staff, icon);
+                break;
 
-        //Listener for rollback list menu
-        else if (title.equals(InventoryName.ROLLBACK_LIST.getName())) {
-            rollbackMenu(e,staff, icon);
-        }
+            //Listener for rollback list menu
+            case ROLLBACK_LIST:
+                rollbackMenu(e, staff, icon);
+                break;
 
-        //Listener for main inventory backup menu
-        else if (title.equals(InventoryName.MAIN_BACKUP.getName())) {
-            mainBackupMenu(e,staff, icon);
-        }
+            //Listener for main inventory backup menu
+            case MAIN_BACKUP:
+                mainBackupMenu(e, staff, icon);
+                break;
 
-        //Listener for enderchest backup menu
-        else if (title.equals(InventoryName.ENDER_CHEST_BACKUP.getName())) {
-            enderChestBackupMenu(e,staff, icon);
-        }
-
-        else {
-            e.setCancelled(true);
+            //Listener for enderchest backup menu
+            case ENDER_CHEST_BACKUP:
+                enderChestBackupMenu(e, staff, icon);
+                break;
         }
     }
 
@@ -268,9 +242,6 @@ public class ClickGUI implements Listener {
     }
 
     private void mainBackupMenu(InventoryClickEvent e, Player staff, ItemStack icon) {
-        if (!e.getView().getTitle().equals(InventoryName.MAIN_BACKUP.getName()))
-            return;
-
         if (e.getRawSlot() >= (InventoryName.MAIN_BACKUP.getSize() - 9) && e.getRawSlot() < InventoryName.MAIN_BACKUP.getSize()) {
             CustomDataItemEditor nbt = CustomDataItemEditor.editItem(icon);
             if (!nbt.hasUUID())
@@ -616,9 +587,6 @@ public class ClickGUI implements Listener {
     }
 
     private void enderChestBackupMenu(InventoryClickEvent e, Player staff, ItemStack icon) {
-        if (!e.getView().getTitle().equals(InventoryName.ENDER_CHEST_BACKUP.getName()))
-            return;
-
         if (e.getRawSlot() >= (InventoryName.ENDER_CHEST_BACKUP.getSize() - 9) && e.getRawSlot() < InventoryName.ENDER_CHEST_BACKUP.getSize()) {
             CustomDataItemEditor nbt = CustomDataItemEditor.editItem(icon);
             if (!nbt.hasUUID())

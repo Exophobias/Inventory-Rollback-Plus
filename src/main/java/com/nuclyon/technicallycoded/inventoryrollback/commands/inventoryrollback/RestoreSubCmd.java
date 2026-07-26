@@ -2,6 +2,7 @@ package com.nuclyon.technicallycoded.inventoryrollback.commands.inventoryrollbac
 
 import com.nuclyon.technicallycoded.inventoryrollback.InventoryRollbackPlus;
 import com.nuclyon.technicallycoded.inventoryrollback.commands.IRPCommand;
+import com.nuclyon.technicallycoded.inventoryrollback.util.SyncExecutor;
 import me.danjono.inventoryrollback.InventoryRollback;
 import me.danjono.inventoryrollback.config.ConfigData;
 import me.danjono.inventoryrollback.config.MessageData;
@@ -49,8 +50,6 @@ public class RestoreSubCmd extends IRPCommand {
                 reportMenuFailure(sender, e);
             }
         } else if(args.length == 2) {
-            OfflinePlayer rollbackPlayer;
-
             String uuidStr = args[1];
 
             // Handle input of UUID
@@ -70,24 +69,43 @@ public class RestoreSubCmd extends IRPCommand {
                     uuidStr += oldUuidStr.substring(20);
                 }
 
+                OfflinePlayer rollbackPlayer;
                 try {
+                    // Looking up by UUID is a local construction, no profile fetch
                     rollbackPlayer = Bukkit.getOfflinePlayer(UUID.fromString(uuidStr));
                 } catch (IllegalArgumentException e) {
                     sender.sendMessage(MessageData.getPluginPrefix() + MessageData.getError());
                     return;
                 }
-            } else {
-                // If not UUID length, assume it's a name
-                rollbackPlayer = Bukkit.getOfflinePlayer(args[1]);
-            }
 
-            try {
-                openPlayerMenu(staff, rollbackPlayer);
-            } catch (NullPointerException e) {
-                reportMenuFailure(sender, e);
+                openPlayerMenuSafely(sender, staff, rollbackPlayer);
+            } else {
+                // If not UUID length, assume it's a name. Resolving a name the server has not seen
+                // before goes out to the Mojang API and blocks the calling thread, so it must not
+                // happen on the tick - a single unknown name would otherwise freeze the server.
+                String name = args[1];
+
+                this.main.getServer().getScheduler().runTaskAsynchronously(this.main, () -> {
+                    OfflinePlayer rollbackPlayer = Bukkit.getOfflinePlayer(name);
+
+                    SyncExecutor.run(() -> {
+                        // They may have logged off while we were waiting on Mojang
+                        if (!staff.isOnline()) return;
+
+                        openPlayerMenuSafely(sender, staff, rollbackPlayer);
+                    });
+                });
             }
         } else {
             sender.sendMessage(MessageData.getPluginPrefix() + MessageData.getError());
+        }
+    }
+
+    private void openPlayerMenuSafely(CommandSender sender, Player staff, OfflinePlayer rollbackPlayer) {
+        try {
+            openPlayerMenu(staff, rollbackPlayer);
+        } catch (NullPointerException e) {
+            reportMenuFailure(sender, e);
         }
     }
 

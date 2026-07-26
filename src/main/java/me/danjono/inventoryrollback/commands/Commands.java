@@ -1,5 +1,6 @@
 package me.danjono.inventoryrollback.commands;
 
+import com.nuclyon.technicallycoded.inventoryrollback.util.SyncExecutor;
 import me.danjono.inventoryrollback.InventoryRollback;
 import me.danjono.inventoryrollback.config.ConfigData;
 import me.danjono.inventoryrollback.config.MessageData;
@@ -102,14 +103,25 @@ public class Commands extends ConfigData implements CommandExecutor, TabComplete
                 reportMenuFailure(sender, e);
             }
         } else if(args.length == 2) {
-            @SuppressWarnings("deprecation")
-            OfflinePlayer rollbackPlayer = Bukkit.getOfflinePlayer(args[1]);
+            // Resolving an unseen name goes out to the Mojang API and blocks the calling thread,
+            // so it must not happen on the tick.
+            String name = args[1];
 
-            try {
-                openPlayerMenu(staff, rollbackPlayer);
-            } catch (NullPointerException e) {
-                reportMenuFailure(sender, e);
-            }
+            Bukkit.getScheduler().runTaskAsynchronously(InventoryRollback.getInstance(), () -> {
+                @SuppressWarnings("deprecation")
+                OfflinePlayer rollbackPlayer = Bukkit.getOfflinePlayer(name);
+
+                SyncExecutor.run(() -> {
+                    // They may have logged off while we were waiting on Mojang
+                    if (!staff.isOnline()) return;
+
+                    try {
+                        openPlayerMenu(staff, rollbackPlayer);
+                    } catch (NullPointerException e) {
+                        reportMenuFailure(sender, e);
+                    }
+                });
+            });
         } else {
             sender.sendMessage(MessageData.getPluginPrefix() + MessageData.getError());
         }
