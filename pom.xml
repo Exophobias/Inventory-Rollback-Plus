@@ -48,11 +48,22 @@
     </repositories>
 
     <dependencies>
-        <!-- Spigot API -->
+        <!-- Spigot API.
+
+             26.2 is what Patriam actually runs, and this compiles straight against it with no
+             two-target profile. There is no MockBukkit here: the test classes are plain JUnit over
+             the serialization codecs and the YAML numeric reader, and none of them needs a running
+             server, so nothing on the test side pins an older API the way it does in the plugins
+             that do mock a server. The suite runs against 26.2 and stays meaningful.
+
+             api-version in plugin.yml is a FLOOR rather than a pin, so the jar stays eligible to
+             load on older servers, but eligibility is not compatibility. Compiling against the
+             deployed version is what turns a removed method into a build error instead of a
+             NoSuchMethodError in the middle of a restore. -->
         <dependency>
             <groupId>org.spigotmc</groupId>
             <artifactId>spigot-api</artifactId>
-            <version>1.20.5-R0.1-SNAPSHOT</version>
+            <version>26.2-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
         <!--<dependency>
