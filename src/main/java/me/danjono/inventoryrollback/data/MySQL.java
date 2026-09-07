@@ -313,11 +313,15 @@ public class MySQL {
     }
 
     public void saveData() throws SQLException {
+        saveDataChecked();
+    }
+
+    public boolean saveDataChecked() throws SQLException {
         if (!failedFields.isEmpty()) {
             InventoryRollbackPlus.getInstance().getLogger().severe(
                     "Refusing to insert backup for " + uuid + " at " + timestamp + ": could not serialize "
                             + String.join(", ", failedFields) + ". This backup was NOT saved.");
-            return;
+            return false;
         }
 
         try (Connection conn = getConnection()) {
@@ -346,6 +350,7 @@ public class MySQL {
             }
             conn.commit();
         }
+        return true;
     }
 
     public void getRollbackMenuData() throws SQLException {

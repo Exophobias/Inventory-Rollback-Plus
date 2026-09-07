@@ -34,6 +34,7 @@ public class YAML {
     private final File playerBackupFolder;
     private final File backupFile;
     private final YamlConfiguration data;
+    private final java.util.logging.Logger logger;
 
     private String mainInventory;
     private String armour;
@@ -65,10 +66,17 @@ public class YAML {
     private static final String TEMP_SUFFIX = ".tmp";
 
     public YAML(UUID uuid, LogType logType, Long timestampIn) {
+        this(uuid, logType, timestampIn, getPlayerBackupLocation(logType, uuid),
+                InventoryRollbackPlus.getInstance().getLogger());
+    }
+
+    YAML(UUID uuid, LogType logType, Long timestampIn, File playerBackupFolder,
+         java.util.logging.Logger logger) {
         this.uuid = uuid;
         this.logType = logType;
         this.timestamp = timestampIn;
-        this.playerBackupFolder = getPlayerBackupLocation(logType, uuid);
+        this.playerBackupFolder = playerBackupFolder;
+        this.logger = logger;
         this.backupFile = new File (playerBackupFolder, timestamp + ".yml");
         this.data = YamlConfiguration.loadConfiguration(backupFile);
     }
@@ -143,6 +151,10 @@ public class YAML {
      * with the list, which showed up as blank menu slots and off-by-one page counts.
      */
     private List<Long> listBackupTimestamps() {
+        return listBackupTimestamps(false);
+    }
+
+    private List<Long> listBackupTimestamps(boolean includeRecent) {
         List<Long> timestamps = new ArrayList<>();
 
         File[] backupFiles = playerBackupFolder.listFiles();
@@ -167,7 +179,7 @@ public class YAML {
             }
 
             // Make sure that the file hasn't been created in the last 1s: we could still be writing to it
-            if (currTime - timestamp <= WRITE_SETTLE_MS)
+            if (!includeRecent && currTime - timestamp <= WRITE_SETTLE_MS)
                 continue;
 
             timestamps.add(timestamp);
@@ -207,6 +219,20 @@ public class YAML {
 
     public void purgeExcessSaves(int deleteAmount) {
         List<Long> timeSaved = listBackupTimestamps();
+        deleteOldest(timeSaved, deleteAmount);
+    }
+
+    /** Called after publication; complete final files include the backup just acknowledged. */
+    public boolean saveAndRetain(int maxSaves) {
+        if (!saveDataChecked()) return false;
+        if (maxSaves > 0) {
+            List<Long> timeSaved = listBackupTimestamps(true);
+            deleteOldest(timeSaved, Math.max(0, timeSaved.size() - maxSaves));
+        }
+        return true;
+    }
+
+    private void deleteOldest(List<Long> timeSaved, int deleteAmount) {
 
         // Newest first, so the oldest saves - the ones we drop - are at the tail
         for (int i = 0; i < deleteAmount; i++) {
@@ -218,7 +244,7 @@ public class YAML {
             try {
                 Files.deleteIfExists(expiredBackup.toPath());
             } catch (IOException ex) {
-                InventoryRollbackPlus.getInstance().getLogger().log(Level.WARNING,
+                logger.log(Level.WARNING,
                         "Could not delete expired backup " + expiredBackup.getAbsolutePath(), ex);
             }
         }
@@ -407,12 +433,16 @@ public class YAML {
     }
 
     public void saveData() {
+        saveDataChecked();
+    }
+
+    public boolean saveDataChecked() {
         if (!failedFields.isEmpty()) {
             // Writing anyway would produce a file that looks like a valid empty inventory.
-            InventoryRollbackPlus.getInstance().getLogger().severe(
+            logger.severe(
                     "Refusing to write backup " + backupFile.getAbsolutePath() + ": could not serialize "
                             + String.join(", ", failedFields) + ". This backup was NOT saved.");
-            return;
+            return false;
         }
 
         data.set("inventory", mainInventory);
@@ -446,6 +476,7 @@ public class YAML {
             } catch (AtomicMoveNotSupportedException ex) {
                 Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
             }
+            return true;
         } catch (IOException e) {
             // Clean up before logging: the logger call needs the plugin instance, and losing the
             // scratch file matters more than the message if that lookup ever fails.
@@ -457,8 +488,9 @@ public class YAML {
                 // above can strand one, and it costs a single unreferenced file.
             }
 
-            InventoryRollbackPlus.getInstance().getLogger().log(Level.SEVERE,
+            logger.log(Level.SEVERE,
                     "Failed to write backup " + backupFile.getAbsolutePath() + " - this backup was NOT saved!", e);
+            return false;
         }
     }
 

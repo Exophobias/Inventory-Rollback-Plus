@@ -19,7 +19,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
 
 public class SaveInventory {
@@ -95,11 +94,8 @@ public class SaveInventory {
             else if (deathCause != null) data.setDeathReason(deathCause.name());
             else if (logType == LogType.DEATH) data.setDeathReason("UNKNOWN");
 
-            // Remove excess saves if limit is reached
-            CompletableFuture<Void> purgeTask = data.purgeExcessSaves(saveAsync);
-
-            // Save new data
-            purgeTask.thenRun(() -> data.saveData(saveAsync));
+            // A rejected serialization or failed publication must never discard an older backup.
+            data.saveAndRetain();
         };
 
         if (saveAsync) main.getServer().getScheduler().runTaskAsynchronously(main, saveTask);

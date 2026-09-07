@@ -19,6 +19,9 @@ import me.danjono.inventoryrollback.config.ConfigData.SaveType;
 import org.bukkit.scheduler.BukkitRunnable;
 
 public class PlayerData {
+    // Bound lock memory while serializing each owner's publication and retention across async jobs.
+    private static final Object[] SAVE_LOCKS = java.util.stream.IntStream.range(0, 64)
+            .mapToObj(ignored -> new Object()).toArray();
 
     private final OfflinePlayer offlinePlayer;
     private final LogType logType;
@@ -439,6 +442,30 @@ public class PlayerData {
 
         if (saveAsync) Bukkit.getScheduler().runTaskAsynchronously(InventoryRollback.getInstance(),saveDataTask);
         else saveDataTask.run();
+    }
+
+    /** Runs on the existing save worker, with no second scheduler hop before publication. */
+    public boolean saveAndRetain() {
+        int hash = 31 * offlinePlayer.getUniqueId().hashCode() + logType.hashCode();
+        synchronized (SAVE_LOCKS[Math.floorMod(hash, SAVE_LOCKS.length)]) {
+            if (yaml != null) return yaml.saveAndRetain(getMaxSaves());
+            if (mysql != null) {
+                try {
+                    if (!mysql.saveDataChecked()) return false;
+                    int maxSaves = getMaxSaves();
+                    if (maxSaves > 0) {
+                        int excess = mysql.getAmountOfBackups() - maxSaves;
+                        if (excess > 0) mysql.purgeExcessSaves(excess);
+                    }
+                    return true;
+                } catch (SQLException e) {
+                    InventoryRollbackPlus.getInstance().getLogger().log(java.util.logging.Level.SEVERE,
+                            "Could not finish backup publication/retention for "
+                                    + offlinePlayer.getUniqueId() + " at " + timestamp, e);
+                }
+            }
+            return false;
+        }
     }
 
     public int getMaxSaves() {
