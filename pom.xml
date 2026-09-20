@@ -16,6 +16,8 @@
     </organization>
 
     <properties>
+        <spigot.version>26.2-R0.1-SNAPSHOT</spigot.version>
+        <java.version>8</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
@@ -63,7 +65,7 @@
         <dependency>
             <groupId>org.spigotmc</groupId>
             <artifactId>spigot-api</artifactId>
-            <version>26.2-R0.1-SNAPSHOT</version>
+            <version>${spigot.version}</version>
             <scope>provided</scope>
         </dependency>
         <!--<dependency>
@@ -151,8 +153,8 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.8.1</version>
                 <configuration>
-                    <source>8</source>
-                    <target>8</target>
+                    <source>${java.version}</source>
+                    <target>${java.version}</target>
                     <showWarnings>true</showWarnings>
                     <showDeprecation>true</showDeprecation>
                 </configuration>
@@ -241,4 +243,13 @@
         </plugins>
     </build>
     <description>Allows server moderators to restore player items and data from backups.</description>
+  <profiles>
+    <profile>
+      <id>paper-26.3</id>
+      <properties>
+        <spigot.version>26.3-R0.1-SNAPSHOT</spigot.version>
+        <java.version>25</java.version>
+      </properties>
+    </profile>
+  </profiles>
 </project>
