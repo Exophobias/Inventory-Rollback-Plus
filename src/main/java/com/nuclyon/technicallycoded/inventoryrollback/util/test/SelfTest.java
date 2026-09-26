@@ -49,9 +49,10 @@ public class SelfTest {
         return name;
     }
 
-    public void run() {
+    public boolean run() {
         try {
             test.run();
+            return true;
         } catch (Throwable t) {
             Logger logger = InventoryRollbackPlus.getInstance().getLogger();
             logger.log(Level.SEVERE, "Test failed with exception: " + test, t);
@@ -60,6 +61,7 @@ public class SelfTest {
             for (String log : this.getLogs()) {
                 logger.severe(" - " + log);
             }
+            return false;
         }
     }
 

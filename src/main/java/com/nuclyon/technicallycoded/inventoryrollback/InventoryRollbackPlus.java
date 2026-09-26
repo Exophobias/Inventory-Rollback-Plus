@@ -5,7 +5,6 @@ import com.nuclyon.technicallycoded.inventoryrollback.commands.Commands;
 import com.nuclyon.technicallycoded.inventoryrollback.util.TimeZoneUtil;
 import com.nuclyon.technicallycoded.inventoryrollback.util.test.SelfTestSerialization;
 import com.tcoded.lightlibs.bukkitversion.BukkitVersion;
-import com.tcoded.lightlibs.bukkitversion.MCVersion;
 import io.papermc.lib.PaperLib;
 import me.danjono.inventoryrollback.InventoryRollback;
 import me.danjono.inventoryrollback.config.ConfigData;
@@ -35,6 +34,9 @@ public class InventoryRollbackPlus extends InventoryRollback {
 
     private ConfigData configData;
     private BukkitVersion version = BukkitVersion.v1_13_R1;
+    private boolean configLoaded;
+    private boolean startupComplete;
+    private boolean serializationSelfTestsPassed;
 
     private AtomicBoolean shuttingDown = new AtomicBoolean(false);
 
@@ -47,30 +49,26 @@ public class InventoryRollbackPlus extends InventoryRollback {
         instancePlus = this;
         InventoryRollback.setInstance(instancePlus);
 
-        // Load Utils
-        this.timeZoneUtil = new TimeZoneUtil();
-
-        // Load Config
-        configData = new ConfigData();
-        configData.setVariables(); // requires TimeZoneUtil
-
-        // Init NMS
+        // Resolve the runtime version before opening storage or accepting backups. Unknown
+        // Minecraft versions must not silently use an older serializer/NMS branch.
         String serverVersion = this.getServer().getVersion();
         getLogger().info("Attempting support for version: " + serverVersion);
-        MCVersion mcVersion = MCVersion.fromServerVersion(serverVersion);
-        BukkitVersion nmsVersion = mcVersion.toBukkitVersion();
+        BukkitVersion nmsVersion = ServerVersionSupport.resolve(serverVersion);
         if (nmsVersion == null) {
-            getLogger().severe(MessageData.getPluginPrefix() + "\n" +
-                    " ** WARNING! IRP may not be compatible with this version of Minecraft. **\n" +
-                    " ** Please fully test the plugin before using on your server as features may be broken. **\n" +
-                    MessageData.getPluginPrefix()
-            );
-            setPackageVersion(BukkitVersion.getLatest().name());
-        } else {
-            setVersion(nmsVersion);
-            InventoryRollback.setPackageVersion(nmsVersion.name());
+            getLogger().severe("Unsupported Minecraft version " + serverVersion
+                    + "; disabling InventoryRollbackPlus before storage starts.");
+            getServer().getPluginManager().disablePlugin(this);
+            return;
         }
+        setVersion(nmsVersion);
+        InventoryRollback.setPackageVersion(nmsVersion.name());
         getLogger().info("Using CraftBukkit version: " + getPackageVersion());
+
+        // Load Utils and Config after validating the runtime version.
+        this.timeZoneUtil = new TimeZoneUtil();
+        configData = new ConfigData();
+        configData.setVariables(); // requires TimeZoneUtil
+        configLoaded = true;
 
         // Storage Init & Update checker
         super.startupTasks();
@@ -81,7 +79,11 @@ public class InventoryRollbackPlus extends InventoryRollback {
         // Commands
         PluginCommand plCmd = getCommand("inventoryrollbackplus");
         Commands cmds = new Commands(this);
-        if (plCmd == null) return;
+        if (plCmd == null) {
+            getLogger().severe("InventoryRollbackPlus command is missing; disabling plugin.");
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
         plCmd.setExecutor(cmds);
         plCmd.setTabCompleter(cmds);
 
@@ -100,8 +102,14 @@ public class InventoryRollbackPlus extends InventoryRollback {
             this.getLogger().info("----------------------------------------");
         }
 
-        // Run self-tests
-        SelfTestSerialization.runTests();
+        // A failed round trip must not leave a backup service enabled or write a shutdown
+        // snapshot using an unverified codec.
+        startupComplete = true;
+        serializationSelfTestsPassed = SelfTestSerialization.runTests();
+        if (!serializationSelfTestsPassed) {
+            getLogger().severe("Inventory serialization self-tests failed; disabling InventoryRollbackPlus.");
+            getServer().getPluginManager().disablePlugin(this);
+        }
     }
 
     @Override
@@ -110,15 +118,17 @@ public class InventoryRollbackPlus extends InventoryRollback {
         getLogger().info("Setting shutdown state");
         shuttingDown.set(true);
 
-        // Save all inventories
-        getLogger().info("Saving player inventories...");
-        for (Player player : this.getServer().getOnlinePlayers()) {
-            if (player.hasPermission("inventoryrollbackplus.leavesave")) {
-                new SaveInventory(player, LogType.QUIT, null, null)
-                        .snapshotAndSave(player.getInventory(), player.getEnderChest(), false);
+        // Failed startup/serialization must not replace an older usable snapshot.
+        if (startupComplete && serializationSelfTestsPassed) {
+            getLogger().info("Saving player inventories...");
+            for (Player player : this.getServer().getOnlinePlayers()) {
+                if (player.hasPermission("inventoryrollbackplus.leavesave")) {
+                    new SaveInventory(player, LogType.QUIT, null, null)
+                            .snapshotAndSave(player.getInventory(), player.getEnderChest(), false);
+                }
             }
+            getLogger().info("Done saving player inventories!");
         }
-        getLogger().info("Done saving player inventories!");
 
         // Unregister event listeners
         HandlerList.unregisterAll(this);
@@ -128,7 +138,8 @@ public class InventoryRollbackPlus extends InventoryRollback {
 
         // Clear instance references
         instancePlus = null;
-        super.onDisable();
+        if (configLoaded) super.onDisable();
+        else InventoryRollback.setInstance(null);
 
         getLogger().info("Plugin is disabled!");
     }

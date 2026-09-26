@@ -18,7 +18,7 @@ import java.util.logging.Logger;
 
 public class SelfTestSerialization {
 
-    public static void runTests() {
+    public static boolean runTests() {
         List<SelfTest> tests = Arrays.asList(
                 SelfTestSerialization.buildTestSerializeAndDeserializeItem(),
                 SelfTestSerialization.buildTestSerializeAndDeserializeEmptyInventory(),
@@ -36,10 +36,11 @@ public class SelfTestSerialization {
         for (SelfTest test : tests) {
             if (currentVersion.greaterOrEqThan(test.getMinVersion()) && currentVersion.lessOrEqThan(test.getMaxVersion())) {
                 try {
-                    test.run();
-                    completed++;
-                } catch (Exception e) {
-                    e.printStackTrace();
+                    if (test.run()) completed++;
+                    else failed++;
+                } catch (Throwable e) {
+                    InventoryRollbackPlus.getInstance().getLogger().log(java.util.logging.Level.SEVERE,
+                            "Serialization self-test failed: " + test.getName(), e);
                     failed++;
                 }
             } else {
@@ -55,6 +56,8 @@ public class SelfTestSerialization {
         } else {
             logger.info("All tests passed successfully.");
         }
+
+        return failed == 0;
 
     }
 
